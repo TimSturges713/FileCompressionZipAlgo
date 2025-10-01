@@ -7,6 +7,8 @@ The compression and decompression functions of my personal implementation
 of the LZ77 algorithm in Python.
 """
 
+import struct
+
 WINDOW_SIZE = 20        # size of the full sliding window of the algorithm, AKA the size of both buffers combined
 LOOK_AHEAD = 10          # size of the look ahead buffer
 SEARCH_BUFFER = 10       # size of the search buffer
@@ -37,13 +39,12 @@ def compress(filename:str):
         while lookLen > 0:         # go until all pointers have been made
             match = longestMatch(searchBuffer, lookAhead, searchLen, lookLen)    # retrieve the repeating match from search and lookAhead buffers
             pointers.append(match)                                      # append the pointer to the list
-            offsetAndLength = match[0]
-            nextChar = match[1]
+            offsetAndLength = match
             tmp = offsetAndLength
-            tmp = tmp << 8
-            tmp = tmp >> 8
+            tmp = tmp >> 16
             offset = tmp
             tmp = offsetAndLength
+            tmp = tmp >> 8
             tmp = tmp & 0xFF
             length = tmp
             pos += length + 1
@@ -73,7 +74,7 @@ Finds the longest repeating subsequence present in the search buffer compared to
 @return longestSub      a tuple of format (offset, length, next char) that makes the algorithm function properly
 """
 def longestMatch(searchBuffer, lookAhead, searchLen, lookLen):
-    longestSub = (0, lookAhead[0])   # the tuple representing the pointer to the longest matching subseq, default
+    longestSub = ord(lookAhead[0])   # the tuple representing the pointer to the longest matching subseq, default
     if(searchLen == 0):             # if there's no search buffer yet, then there's no longest match, return
         return longestSub
     tmp = ''                 # sets the first part of longest sequence
@@ -85,30 +86,26 @@ def longestMatch(searchBuffer, lookAhead, searchLen, lookLen):
             if(l == 1):             # to avoid index out of bounds for substring slices
                 if(searchBuffer[searchLen-j] == tmp):   # backwards as seen here, if rightmost is a match to the tmp subseq then it's the longest 
                     if(i + 1 == lookLen): 
-                        pt = bin(j)
-                        pt = int(pt, 2) << 8
-                        pt = pt | l
-                        longestSub = (pt, lookAhead[i+1])
+                        pt = (j << 16) | (l << 8) | ord(lookAhead[i+1])
+
+                        longestSub = pt
                     else:                   
-                        pt = bin(j)
-                        pt = int(pt, 2) << 8
-                        pt = pt | l
-                        longestSub = (pt, lookAhead[i+1])    # set tuple
+                        pt = (j << 16) | (l << 8) | ord(lookAhead[i+1])
+
+                        longestSub = pt
                     l += 1                  # length increased by 1 since longer subseq is found
                     flag = True             # longer subseq found at this length
                     break                   # move on to the next highest length
             else:
                 if(searchBuffer[searchLen-j:searchLen-j+l] == tmp):   # backwards as seen here, if rightmost is a match to the tmp subseq then it's the longest
                     if(i + 1 == lookLen):
-                        pt = bin(j)
-                        pt = int(pt, 2) << 8
-                        pt = pt | l
-                        longestSub = (pt, lookAhead[i+1])
+                        pt = (j << 16) | (l << 8) | ord(lookAhead[i+1])
+
+                        longestSub = pt
                     else:                   
-                        pt = bin(j)
-                        pt = int(pt, 2) << 8
-                        pt = pt | l
-                        longestSub = (pt, lookAhead[i+1])   # set tuple
+                        pt = (j << 16) | (l << 8) | ord(lookAhead[i+1])
+
+                        longestSub = pt
                     l += 1                  # length increased by 1 since longer subseq is found
                     flag = True             # longer subseq found at this length
                     break                   # move on to the next highest length
@@ -125,27 +122,104 @@ def decompress(pointers):
     finalAnswer = ""
 
     for pointer in pointers:
-        offsetAndLength = pointer[0]
-        nextChar = str(pointer[1])
+        offsetAndLength = pointer
+        
         tmp = offsetAndLength
-        tmp = tmp >> 8
+        tmp = tmp >> 16
         offset = tmp
         tmp = offsetAndLength
-        
+        tmp = tmp >> 8
         tmp = tmp & 0xFF
         length = tmp
+        tmp = offsetAndLength
+        tmp = tmp & 0xFF
+        nextChar = chr(tmp)
+          
         for i in range(length):
             finalAnswer += finalAnswer[len(finalAnswer)-offset]
         finalAnswer += nextChar
     return finalAnswer
 
+def decompressionProcessing(filename):
+    with open(filename, "rb") as f:
+                pointers = []
+                while True:
+                    chunk = f.read(3)
+                    if not chunk:
+                        break             
+                    if len(chunk) != 3:
+                        raise EOFError(f"Incomplete token: expected 3 bytes, got {len(chunk)}")
+                    offset, length, next_byte = struct.unpack(">BBB", chunk)
+                    pointer = (offset << 16) | (length << 8) | next_byte
+                    pointers.append(pointer)    
+                englishAnswer = decompress(pointers)
+            
+                try:
+                    with open(filename[:len(filename)-4] + ".txt", "w") as write:
+                        write.write(englishAnswer)
+                except:
+                    f = open(filename[:len(filename)-4] + ".txt", "x")
+                    f.close()
+                    with open(filename[:len(filename)-4] + ".txt", "w") as write:
+                        write.write(englishAnswer)
+
+def compressionProcessing(filename):
+    pointers = compress(filename)
+    name = filename[:len(filename)-4]
+    try:
+        with open(name + ".tim", "wb") as write:
+            for pointer in pointers:
+                offset = pointer >> 16
+                length = (pointer >> 8) & 0xFF
+                next_char = pointer & 0xFF
+                write.write(struct.pack(">BB", offset, length))
+                write.write(struct.pack("B", next_char))  
+    except: 
+        f = open(name + ".tim", "x")
+        f.close()
+        with open(name + ".tim", "wb") as write:
+            for pointer in pointers:
+                offset = pointer >> 16
+                length = (pointer >> 8) & 0xFF
+                next_char = pointer & 0xFF
+                write.write(struct.pack(">BB", offset, length))
+                write.write(struct.pack("B", next_char))   
 
 def main():
-    pointers = compress("test.txt")
-    print(pointers)
-    print(len(pointers))
-    print(decompress(pointers))
-    return
+    print("Welcome to the text file compression software!")
+    compOrDecomp = input("Do you want to compress (0) or decompress (1) a text file? Enter 0 or 1:")
+    if compOrDecomp == "0":
+        while True:
+            try:
+                while True:
+                    filename = input("Enter the path of the text file to compress:")
+                    if filename[len(filename)-4:] == ".txt":
+                        break
+                    else:
+                        print("Please enter a valid .txt file path")
+                compressionProcessing(filename)
+                break
+            except:
+                print("Please try a valid .txt file path")
+                continue
+        print("Compressed into " + filename[:len(filename)-4] + ".tim successfully!")
+    else: 
+        while True:
+            try:
+                while True:
+                    filename = input("Enter the path of the .tim file to decompress:")
+                    if filename[len(filename)-4:] == ".tim":
+                        break
+                    else:
+                        print("Please enter a valid .tim file path")
+                decompressionProcessing(filename)
+                break
+            except:
+                print("Please try a valid .tim file path")
+                continue
+                
+            
+        print("Decompressed into " + filename[:len(filename)-4] + ".txt successfully!")
 
 
 if __name__ == "__main__":

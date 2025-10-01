@@ -1,3 +1,2 @@
-My name is Timothy Sturges. 
-I'm a computer science student at RIT.
-I'm in my third year.
+I'm using this file as a test
+c:\Users\tstur\Desktop\FileCompressionZipAlgo\test.tim
