@@ -4,7 +4,7 @@ filename: lz77.py
 @author: Timothy Sturges
 
 The compression and decompression functions of my personal implementation
-of the LZ77 algorithm in Python
+of the LZ77 algorithm in Python.
 """
 
 WINDOW_SIZE = 20        # size of the full sliding window of the algorithm, AKA the size of both buffers combined
@@ -13,7 +13,7 @@ SEARCH_BUFFER = 10       # size of the search buffer
 
 
 """
-Compresses a textfile using the LZ77 algorithm
+Compresses a textfile using the LZ77 algorithm.
 
 @param filename     the path of the file to compress
 
@@ -37,13 +37,22 @@ def compress(filename:str):
         while lookLen > 0:         # go until all pointers have been made
             match = longestMatch(searchBuffer, lookAhead, searchLen, lookLen)    # retrieve the repeating match from search and lookAhead buffers
             pointers.append(match)                                      # append the pointer to the list
-            pos += match[1] + 1
+            offsetAndLength = match[0]
+            nextChar = match[1]
+            tmp = offsetAndLength
+            tmp = tmp << 8
+            tmp = tmp >> 8
+            offset = tmp
+            tmp = offsetAndLength
+            tmp = tmp & 0xFF
+            length = tmp
+            pos += length + 1
             if pos + lookLen > len(data):
-               lookLen = lookLen - match[1] - 1                                        # increase position to however long the window needs to shift
+               lookLen = lookLen - length - 1                                        # increase position to however long the window needs to shift
             if lookLen <= 0:
                 break
             if searchLen < SEARCH_BUFFER:
-                searchLen += match[1] + 1
+                searchLen += length + 1
             searchBuffer = ""
             lookAhead = ""
             for i in range(pos, pos+lookLen):    # move lookAhead buffer forwards accordingly
@@ -64,7 +73,7 @@ Finds the longest repeating subsequence present in the search buffer compared to
 @return longestSub      a tuple of format (offset, length, next char) that makes the algorithm function properly
 """
 def longestMatch(searchBuffer, lookAhead, searchLen, lookLen):
-    longestSub = (0, 0, lookAhead[0])   # the tuple representing the pointer to the longest matching subseq, default
+    longestSub = (0, lookAhead[0])   # the tuple representing the pointer to the longest matching subseq, default
     if(searchLen == 0):             # if there's no search buffer yet, then there's no longest match, return
         return longestSub
     tmp = ''                 # sets the first part of longest sequence
@@ -75,19 +84,31 @@ def longestMatch(searchBuffer, lookAhead, searchLen, lookLen):
         for j in range(l, searchLen+1):  # go through the search buffer backwards 
             if(l == 1):             # to avoid index out of bounds for substring slices
                 if(searchBuffer[searchLen-j] == tmp):   # backwards as seen here, if rightmost is a match to the tmp subseq then it's the longest 
-                    if(i + 1 == lookLen):
-                        longestSub = (j, l, lookAhead[i])
+                    if(i + 1 == lookLen): 
+                        pt = bin(j)
+                        pt = int(pt, 2) << 8
+                        pt = pt | l
+                        longestSub = (pt, lookAhead[i+1])
                     else:                   
-                        longestSub = (j, l, lookAhead[i+1])    # set tuple
+                        pt = bin(j)
+                        pt = int(pt, 2) << 8
+                        pt = pt | l
+                        longestSub = (pt, lookAhead[i+1])    # set tuple
                     l += 1                  # length increased by 1 since longer subseq is found
                     flag = True             # longer subseq found at this length
                     break                   # move on to the next highest length
             else:
                 if(searchBuffer[searchLen-j:searchLen-j+l] == tmp):   # backwards as seen here, if rightmost is a match to the tmp subseq then it's the longest
                     if(i + 1 == lookLen):
-                        longestSub = (j, l, lookAhead[i])
+                        pt = bin(j)
+                        pt = int(pt, 2) << 8
+                        pt = pt | l
+                        longestSub = (pt, lookAhead[i+1])
                     else:                   
-                        longestSub = (j, l, lookAhead[i+1])    # set tuple
+                        pt = bin(j)
+                        pt = int(pt, 2) << 8
+                        pt = pt | l
+                        longestSub = (pt, lookAhead[i+1])   # set tuple
                     l += 1                  # length increased by 1 since longer subseq is found
                     flag = True             # longer subseq found at this length
                     break                   # move on to the next highest length
@@ -96,14 +117,34 @@ def longestMatch(searchBuffer, lookAhead, searchLen, lookLen):
         
     return longestSub
 
-def decompress():
-    return
+
+"""
+Decompresses a textfile using the LZ77 algorithm.
+"""
+def decompress(pointers):
+    finalAnswer = ""
+
+    for pointer in pointers:
+        offsetAndLength = pointer[0]
+        nextChar = str(pointer[1])
+        tmp = offsetAndLength
+        tmp = tmp >> 8
+        offset = tmp
+        tmp = offsetAndLength
+        
+        tmp = tmp & 0xFF
+        length = tmp
+        for i in range(length):
+            finalAnswer += finalAnswer[len(finalAnswer)-offset]
+        finalAnswer += nextChar
+    return finalAnswer
 
 
 def main():
     pointers = compress("test.txt")
     print(pointers)
     print(len(pointers))
+    print(decompress(pointers))
     return
 
 
